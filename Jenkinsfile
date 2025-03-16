@@ -1,4 +1,6 @@
 pipeline {
+    options { timestamps () }  // time stamps for easier log tracking 
+    
     agent any
 
     triggers {
@@ -6,9 +8,10 @@ pipeline {
     }
 
     environment {
-        SERVER_USER = 'tomcat'
-        SERVER_HOST = '3.15.21.212'
-        SERVER_PATH = '/opt/tomcat/webapps/' 
+        SERVER_HOST = '18.117.75.126'
+        TOMCAT_PATH = '/opt/tomcat/webapps/' 
+        SONAR_TOKEN = credentials('sonar-new')
+        WAR_FILE_PATH = '/var/lib/jenkins/workspace/Project/target/NumberGuessGame-1.0-SNAPSHOT.war'
     }
 
     stages {
@@ -20,15 +23,19 @@ pipeline {
 
         stage('Code Quality Check') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn clean verify sonar:sonar'
+                withSonarQubeEnv('Sonar') {
+                    sh 'mvn clean verify sonar:sonar -Dsonar.login=$SONAR_TOKEN'
                 }
             }
         }
 
         stage('Build') {
+            tools {
+                maven 'Maven'
+                
+            }
             steps {
-                sh 'mvn clean package -DskipTests' // Skip tests in build stage
+                sh 'mvn clean package -X' // Skip tests in build stage -X shows full debug logs
             }
         }
 
@@ -36,14 +43,17 @@ pipeline {
             steps {
                 sh 'mvn test' // Run JUnit tests
             }
+            
         }
 
         stage('Deploy to Server') {
             steps {
-                sshagent(['ad94a7ca-9f84-47c5-bcb3-89d95070954c']) { 
+                script {
                     sh '''
-                    scp target/*.war ${SERVER_USER}@${SERVER_HOST}:${SERVER_PATH}
-                    ssh ${SERVER_USER}@${SERVER_HOST} "sudo systemctl restart tomcat.service"
+                    sudo cp ${WAR_FILE_PATH} ${TOMCAT_PATH}
+                    '''
+                    sh '''
+                    sudo systemctl restart tomcat
                     '''
                 }
             }
